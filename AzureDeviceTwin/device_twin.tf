@@ -12,26 +12,29 @@ locals {
 resource "local_file" "script_template" {
     filename = "device_script.ps1.tmpl"
     content = <<SCRIPT
-        $MAX_TRIES=${var.retries}
         $inc=0
-        if ( [System.Convert]::ToBoolean('${var.edge}') ) {
+        $maxtries='${var.retries}' -as [int]
+        $edge=''
+        if ( [ System.Convert ]::ToBoolean( '${var.edge}' ) -and ( "$${command}" -eq "create" ) ) {
             $edge='--edge-enabled'
         }
-        while($inc -lt $MAX_TRIES) {
-            $inc = $inc+1
+        while( $inc -lt $maxtries ) {
+            $inc=$inc+1
             try {
-                $res = az iot hub device-identity $${command} -n '${var.iothub_name}' -d '${var.name} $edge' 2>$1
-                if ($res -And !($res -Match "ERROR")) {
+                $res = az iot hub device-identity $${command} -n '${var.iothub_name}' -d '${var.name}' $edge 2>$1
+                if ( !( $res -Match "ERROR" ) ) {
                     echo "Success" 
-                    break
+                    exit 0
                 }
             }
-            catch [Exception]
+            catch [ Exception ]
             {
                 echo "An Error occured."
                 echo $_.Exception.GetType().FullName, $_.Exception.Message
+                break
             } 
         }
+        exit 1
         SCRIPT
 }
 
