@@ -48,7 +48,7 @@ data "template_file" "command_scripts" {
 }
 
 # local executor for the two scripts
-resource "null_resource" "device" {
+resource "null_resource" "device_twin" {
     triggers = { 
         create_command =  data.template_file.command_scripts[local.create].rendered 
         destroy_command =  data.template_file.command_scripts[local.destroy].rendered 
@@ -63,4 +63,20 @@ resource "null_resource" "device" {
         interpreter = ["pwsh" , "-Command"]
         command = self.triggers.destroy_command
     }
+}
+
+
+# connection string
+resource "null_resource" "get_connection_string" {
+    provisioner "local-exec" {
+        interpreter = ["pwsh" , "-Command"]
+        command = "az iot hub device-identity connection-string show -n '${var.iothub_name}' -d '${var.name}' >> ./${var.name}_connection_string.tmp"
+    }
+    depends_on = [ null_resource.device_twin ]
+}
+
+# connection string file
+data "local_file" "connection_string" {
+    filename = "./${var.name}_connection_string.tmp"
+    depends_on = [ null_resource.get_connection_string ]
 }

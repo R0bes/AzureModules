@@ -3,3 +3,6 @@
 .terraform.tfstate.lock.info
 *.tfstate
 *.tfstate.backup
+*.tmp
+
+my_principal_ids.auto.tfvars

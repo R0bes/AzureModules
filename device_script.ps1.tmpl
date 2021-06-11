@@ -1,0 +1,24 @@
+        $inc=0
+        $maxtries='17' -as [int]
+        $edge=''
+        if ( [ System.Convert ]::ToBoolean( 'false' ) -and ( "${command}" -eq "create" ) ) {
+            $edge='--edge-enabled'
+        }
+        while( $inc -lt $maxtries ) {
+            $inc=$inc+1
+            try {
+                $res = az iot hub device-identity ${command} -n 'un7qu3-iothub' -d 'ExampleDevice' $edge 2>$1
+                if ( !( $res -Match "ERROR" ) ) {
+                    echo "Success" 
+                    exit 0
+                }
+            }
+            catch [ Exception ]
+            {
+                echo "An Error occured."
+                echo $_.Exception.GetType().FullName, $_.Exception.Message
+                break
+            } 
+        }
+        exit 1
+t 1
