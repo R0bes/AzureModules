@@ -65,7 +65,7 @@ resource "azurerm_iothub" "main" {
 
 # Time Series Insights
 module "tsi" {
-    source = "./Modules/AzureTimeSeriesInsights"
+    source = "./AzureTimeSeriesInsights"
     name ="${var.unique_prefix}tsi"
     location = azurerm_resource_group.main.location
     resourcegroup_name = azurerm_resource_group.main.name
@@ -79,20 +79,20 @@ module "tsi" {
 
 # Device Twins
 module "device_twin" {
-    source = "./Modules/AzureDeviceTwin/"
+    source = "./AzureDeviceTwin/"
     name = "ExampleDevice"
     iothub_name = azurerm_iothub.main.name
 }
 
 module "edge_device_twin" {
-    source = "./Modules/AzureDeviceTwin/"
+    source = "./AzureDeviceTwin/"
     name = "ExampleEdgeDevice"
     iothub_name = azurerm_iothub.main.name
     edge = true
 }
 
 module "device_twin_list" {
-    source = "./Modules/AzureDeviceTwin/"
+    source = "./AzureDeviceTwin/"
     for_each = toset(["ExampleListDevice1", "ExampleListDevice2", "ExampleListDevice3"])
     name = each.key
     iothub_name = azurerm_iothub.main.name

@@ -7,7 +7,7 @@
         while( $inc -lt $maxtries ) {
             $inc=$inc+1
             try {
-                $res = az iot hub device-identity ${command} -n 'un7qu3-iothub' -d 'ExampleDevice' $edge 2>$1
+                $res = az iot hub device-identity ${command} -n '3xampl3-iothub' -d 'ExampleDevice' $edge 2>$1
                 if ( !( $res -Match "ERROR" ) ) {
                     echo "Success" 
                     exit 0

@@ -6,7 +6,7 @@
 git clone https://www.github.com/R0bes/AzureModules.git
 cd AzureModules
 terraform init
-terrafomr apply --auto-approve
+terrafomr apply -var-file="example.tfvars"
 '''
 
 To get access to the time series insight you have to provide your credentials. 
