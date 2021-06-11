@@ -2,15 +2,17 @@
 
 # Example Usage
 
-'''
+To get access to the time series insight you have to provide your credentials. 
+An example variables file is present in the base directory.
+Also you have to run ```az login``` before terraform apply.
+
+```
 git clone https://www.github.com/R0bes/AzureModules.git
 cd AzureModules
 terraform init
+az login
 terrafomr apply -var-file="example.tfvars"
-'''
-
-To get access to the time series insight you have to provide your credentials. 
-An example variables file is present in the base directory.
+```
 
 # Custom usage
 
@@ -19,16 +21,16 @@ An example variables file is present in the base directory.
 Create and destroy a device twin or edge device twin in an azure iot hub.
 To use in your project:
 * Clone this repository: 
-  '''git clone https://www.github.com/R0bes/AzureModules.git Modules'''
+  ```git clone https://www.github.com/R0bes/AzureModules.git Modules```
 * Include in your terraform file:
-  '''
+  ```
   module "edge_device_twin" {
     source      = "./Modules/AzureDeviceTwin/"
     name        = <device_twin_name>
     iothub_name = <iot_hub.name>
     edge        = <boolean>
   }
-  '''
+  ```
 
 
 ## Time Series Insights
@@ -36,9 +38,9 @@ To use in your project:
 Create and destroy time series insigsts resources.
 To use in your project:
 * Clone this repository: 
-  '''git clone https://www.github.com/R0bes/AzureModules.git Modules'''
+  ```git clone https://www.github.com/R0bes/AzureModules.git Modules```
 * Include in your terraform file:
-  '''
+  ```
   module "edge_device_twin" {
     source                  = "./Modules/AzureTimeSeriesInsights"
     name                    = <device_twin_name>
@@ -52,11 +54,11 @@ To use in your project:
     iothub_key              = <iot_hub.shared_access_policy[0].primary_key>
     principal_object_ids    = <principal_object_ids>
   }
-  '''
+  ```
 
 * Where principal_object_ids look like:
-  '''
+  ```
   variable "principal_object_ids" {
     type    = list(object({ name=string, id=string }))
   }
-  '''
+  ```
