@@ -1,8 +1,12 @@
+
 .terraform
 .terraform.lock.hcl
-.terraform.tfstate.lock.info
+
 *.tfstate
 *.tfstate.backup
-*.tmp
+*.tfstate.lock.info
 
-my_principal_ids.auto.tfvars
+*.tmp
+*.tmpl
+
+*.auto.tfvars
