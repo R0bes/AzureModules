@@ -1,6 +1,6 @@
-## Some Terraform modules for Azure
+# Some Terraform modules for Azure
 
-# Example Usage
+## Example Usage
 
 To get access to the time series insight you have to provide your credentials. 
 An example variables file is present in the base directory.
@@ -14,9 +14,9 @@ az login
 terrafomr apply -var-file="example.tfvars"
 ```
 
-# Custom usage
+## Custom usage
 
-## Device Twin
+### Device Twin
 
 Create and destroy a device twin or edge device twin in an azure iot hub.
 To use in your project:
@@ -33,7 +33,7 @@ To use in your project:
   ```
 
 
-## Time Series Insights
+### Time Series Insights
 
 Create and destroy time series insigsts resources.
 To use in your project:
