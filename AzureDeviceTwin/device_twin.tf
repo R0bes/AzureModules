@@ -70,7 +70,9 @@ resource "null_resource" "device_twin" {
 resource "null_resource" "get_connection_string" {
     provisioner "local-exec" {
         interpreter = ["pwsh" , "-Command"]
-        command = "az iot hub device-identity connection-string show -n '${var.iothub_name}' -d '${var.name}' >> ./${var.name}_connection_string.tmp"
+        command =<<EOT
+            $(az iot hub device-identity connection-string show -n '${var.iothub_name}' -d '${var.name}').split('"')[4] | set-content ${var.name}_connection_string.tmp
+            EOT
     }
     depends_on = [ null_resource.device_twin ]
 }
