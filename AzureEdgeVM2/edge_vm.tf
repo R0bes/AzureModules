@@ -24,18 +24,18 @@ module "device_twin" {
 
 # Virtual Machine with edge deployed
 resource "null_resource" "edge_vm" {
+    depends_on = [ module.device_twin ]
     provisioner "local-exec" {
         interpreter = ["pwsh" , "-Command"]
         command =<<EOT
             az deployment group create `
                 --resource-group ${var.resource_group} `
-                --template-file '${abspath("./Modules/AzureEdgeVM/DeployEdgeVM.json")}' `
+                --template-file '${abspath("./Modules/AzureEdgeVM2/DeployEdgeVM.json")}' `
                 --parameters dnsLabelPrefix='${local.vm_name}' `
                 --parameters adminUsername='${var.vm_user}' `
                 --parameters deviceConnectionString="${module.device_twin.connection_string}" `
                 --parameters ubuntuOSVersion='${var.ubuntuVersion}' `
-                --parameters authenticationType='password' `
-                --parameters adminPasswordOrKey='${var.vm_password}'
+                --parameters adminPasswordOrKey='${var.vm_key}'
         EOT
     }
 }

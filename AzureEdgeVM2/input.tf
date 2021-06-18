@@ -22,8 +22,8 @@ variable "vm_user" {
     type        = string
 }
 
-variable "vm_password" {
-    description = "VM user password"
+variable "vm_key" {
+    description = "VM ssh key"
     type = string
     sensitive = true
 }
