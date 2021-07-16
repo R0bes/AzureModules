@@ -1,6 +1,11 @@
 
-variable "name" {
-    description = "Base Name for all resources"
+
+#################
+#   Variables   #
+#################
+
+variable "prefix" {
+    description = "Prefix for all resources"
     type = string
 }
 
@@ -18,11 +23,13 @@ variable "resourcegroup_name" {
 variable "storage_name" {
     description = "Name of the Storage Account"
     type = string
+    default = ""
 }
 
 variable "storage_key" {
     description = "Key for the Storage Account"
     type = string
+    default = ""
 }
 
 variable "iothub_name" {

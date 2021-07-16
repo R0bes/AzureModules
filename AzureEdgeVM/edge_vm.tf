@@ -4,8 +4,14 @@
 #################
 
 locals {
-  device_name = "${var.name}-device"
-  vm_name     = "${var.name}-vm"
+  external_key    = var.keyfile != ""
+  keyfile         = local.external_key ? var.keyfile : "${path.root}/${var.name}-vm.pem"
+  
+  root_ca_cert    = var.root_ca_cert
+  device_ca_cert  = var.device_ca_cert
+  device_ca_key   = var.device_ca_key
+
+  device_name     = "${var.name}-device"
 }
 
 
@@ -14,16 +20,33 @@ locals {
 #   Resources   #
 #################
 
-# Edge Device Twin
-module "device_twin" {
-  source      = "./../AzureDeviceTwin/"
-  name        = local.device_name
-  iothub_name = var.iot_hub
-  edge        = true
+# RSA Key
+resource "tls_private_key" "vm" {
+  count     = local.external_key ? 0 : 1
+  algorithm = "RSA"
+  rsa_bits  = 4096
 }
 
+# Private key file
+resource "local_file" "private_key" {
+  count           = local.external_key ? 0 : 1
+  content         = tls_private_key.vm[0].private_key_pem
+  filename        = local.keyfile
+  file_permission = "0600"
+}
+
+
+# Edge Device Twin
+module "device_twin" {
+  source            = "./../AzureDeviceTwin/"
+  name              = local.device_name
+  iothub_name       = var.iothub_name
+  edge              = true
+}
+
+
 # Public IP Adress
-resource "azurerm_public_ip" "main" {
+resource "azurerm_public_ip" "vm" {
   name                = "${var.name}-public-ip"
   location            = var.location
   resource_group_name = var.resource_group
@@ -31,7 +54,7 @@ resource "azurerm_public_ip" "main" {
 }
 
 # Virtual Network
-resource "azurerm_virtual_network" "main" {
+resource "azurerm_virtual_network" "vm" {
   name                = "${var.name}-network"
   address_space       = [ "10.0.0.0/16" ]
   location            = var.location
@@ -39,155 +62,143 @@ resource "azurerm_virtual_network" "main" {
 }
 
 # Subnet
-resource "azurerm_subnet" "main" {
+resource "azurerm_subnet" "vm" {
   name                 = "${var.name}-subnet"
   resource_group_name  = var.resource_group
-  virtual_network_name = azurerm_virtual_network.main.name
+  virtual_network_name = azurerm_virtual_network.vm.name
   address_prefixes     = [ "10.0.2.0/24" ]
 }
 
-# Network Interface
-resource "azurerm_network_interface" "main" {
-  name                = "${var.name}-net-interface"
-  location            = var.location
-  resource_group_name = var.resource_group
+resource "azurerm_network_security_group" "vm" {
+  name                  = "${var.name}-security-group"
+  location              = var.location
+  resource_group_name   = var.resource_group
 
-  ip_configuration {
-    name                          = "internal-subnet"
-    subnet_id                     = azurerm_subnet.main.id
-    private_ip_address_allocation = "Dynamic"
-    public_ip_address_id          = azurerm_public_ip.main.id
+  security_rule {
+    name                       = "SSH"
+    priority                   = 1001
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "22"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
   }
 }
 
-# Virtual Machine
-resource "azurerm_virtual_machine" "main" {
-  name                  = "${var.name}-vm"
+# Network Interface
+resource "azurerm_network_interface" "vm" {
+  name                  = "${var.name}-network-interface"
   location              = var.location
   resource_group_name   = var.resource_group
-  network_interface_ids = [ azurerm_network_interface.main.id ]
-  vm_size               = "Standard_DS1_v2"
 
-  delete_os_disk_on_termination    = true
-  delete_data_disks_on_termination = true
+  ip_configuration {
+    name                          = "internal-subnet"
+    subnet_id                     = azurerm_subnet.vm.id
+    private_ip_address_allocation = "Dynamic"
+    public_ip_address_id          = azurerm_public_ip.vm.id
+  }
+}
 
-  storage_image_reference {
+
+# Network Interface + Security Group Association
+resource "azurerm_network_interface_security_group_association" "vm" {
+  network_interface_id      = azurerm_network_interface.vm.id
+  network_security_group_id = azurerm_network_security_group.vm.id
+}
+
+
+# Virtual Machine
+resource "azurerm_linux_virtual_machine" "vm" {
+  name                = "${var.name}-vm"
+  resource_group_name = var.resource_group
+  location            = var.location
+  size                = "Standard_F2"
+
+  admin_username      = var.user
+
+  network_interface_ids = [
+    azurerm_network_interface.vm.id,
+  ]
+
+  admin_ssh_key {
+    username   = var.user
+    public_key = local.external_key ? file(var.keyfile) : tls_private_key.vm[0].public_key_openssh
+  }
+
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+  }
+
+  source_image_reference {
     publisher = "Canonical"
     offer     = "UbuntuServer"
     sku       = var.ubuntu_version
     version   = "latest"
   }
 
-  storage_os_disk {
-    name              = "${var.name}-os-disk"
-    caching           = "ReadWrite"
-    create_option     = "FromImage"
-    managed_disk_type = "Standard_LRS"
-  }
-
-  os_profile_linux_config {
-    disable_password_authentication = false
-  }
-
-  os_profile {
-    computer_name  = local.vm_name
-    admin_username = var.vm_user
-    admin_password = var.vm_password
-    custom_data    = base64encode(data.template_file.cloud_init_script.rendered)
-  }
+  custom_data = base64encode(data.template_file.cloud_init_template.rendered)
 }
-# provide variables
-data "template_file" "cloud_init_script" {
-    template =<<TMPL
+
+
+# custom user data template file
+data "template_file" "cloud_init_template" {
+  vars = {
+      connection_string = module.device_twin.connection_string
+  }
+  template =<<TMPL
 #cloud-config
 apt:
-    preserve_sources_list: true
-    sources:
-        msft.list:
-            source: "deb https://packages.microsoft.com/ubuntu/18.04/multiarch/prod bionic main"
-            key: |
-                -----BEGIN PGP PUBLIC KEY BLOCK-----
-                Version: GnuPG v1.4.7 (GNU/Linux)
+  preserve_sources_list: true
+  sources:
+    msft.list:
+      source: "deb https://packages.microsoft.com/ubuntu/18.04/multiarch/prod bionic main"
+      key: |
+        -----BEGIN PGP PUBLIC KEY BLOCK-----
+        Version: GnuPG v1.4.7 (GNU/Linux)
 
-                mQENBFYxWIwBCADAKoZhZlJxGNGWzqV+1OG1xiQeoowKhssGAKvd+buXCGISZJwT
-                LXZqIcIiLP7pqdcZWtE9bSc7yBY2MalDp9Liu0KekywQ6VVX1T72NPf5Ev6x6DLV
-                7aVWsCzUAF+eb7DC9fPuFLEdxmOEYoPjzrQ7cCnSV4JQxAqhU4T6OjbvRazGl3ag
-                OeizPXmRljMtUUttHQZnRhtlzkmwIrUivbfFPD+fEoHJ1+uIdfOzZX8/oKHKLe2j
-                H632kvsNzJFlROVvGLYAk2WRcLu+RjjggixhwiB+Mu/A8Tf4V6b+YppS44q8EvVr
-                M+QvY7LNSOffSO6Slsy9oisGTdfE39nC7pVRABEBAAG0N01pY3Jvc29mdCAoUmVs
-                ZWFzZSBzaWduaW5nKSA8Z3Bnc2VjdXJpdHlAbWljcm9zb2Z0LmNvbT6JATUEEwEC
-                AB8FAlYxWIwCGwMGCwkIBwMCBBUCCAMDFgIBAh4BAheAAAoJEOs+lK2+EinPGpsH
-                /32vKy29Hg51H9dfFJMx0/a/F+5vKeCeVqimvyTM04C+XENNuSbYZ3eRPHGHFLqe
-                MNGxsfb7C7ZxEeW7J/vSzRgHxm7ZvESisUYRFq2sgkJ+HFERNrqfci45bdhmrUsy
-                7SWw9ybxdFOkuQoyKD3tBmiGfONQMlBaOMWdAsic965rvJsd5zYaZZFI1UwTkFXV
-                KJt3bp3Ngn1vEYXwijGTa+FXz6GLHueJwF0I7ug34DgUkAFvAs8Hacr2DRYxL5RJ
-                XdNgj4Jd2/g6T9InmWT0hASljur+dJnzNiNCkbn9KbX7J/qK1IbR8y560yRmFsU+
-                NdCFTW7wY0Fb1fWJ+/KTsC4=
-                =J6gs
-                -----END PGP PUBLIC KEY BLOCK-----
+        mQENBFYxWIwBCADAKoZhZlJxGNGWzqV+1OG1xiQeoowKhssGAKvd+buXCGISZJwT
+        LXZqIcIiLP7pqdcZWtE9bSc7yBY2MalDp9Liu0KekywQ6VVX1T72NPf5Ev6x6DLV
+        7aVWsCzUAF+eb7DC9fPuFLEdxmOEYoPjzrQ7cCnSV4JQxAqhU4T6OjbvRazGl3ag
+        OeizPXmRljMtUUttHQZnRhtlzkmwIrUivbfFPD+fEoHJ1+uIdfOzZX8/oKHKLe2j
+        H632kvsNzJFlROVvGLYAk2WRcLu+RjjggixhwiB+Mu/A8Tf4V6b+YppS44q8EvVr
+        M+QvY7LNSOffSO6Slsy9oisGTdfE39nC7pVRABEBAAG0N01pY3Jvc29mdCAoUmVs
+        ZWFzZSBzaWduaW5nKSA8Z3Bnc2VjdXJpdHlAbWljcm9zb2Z0LmNvbT6JATUEEwEC
+        AB8FAlYxWIwCGwMGCwkIBwMCBBUCCAMDFgIBAh4BAheAAAoJEOs+lK2+EinPGpsH
+        /32vKy29Hg51H9dfFJMx0/a/F+5vKeCeVqimvyTM04C+XENNuSbYZ3eRPHGHFLqe
+        MNGxsfb7C7ZxEeW7J/vSzRgHxm7ZvESisUYRFq2sgkJ+HFERNrqfci45bdhmrUsy
+        7SWw9ybxdFOkuQoyKD3tBmiGfONQMlBaOMWdAsic965rvJsd5zYaZZFI1UwTkFXV
+        KJt3bp3Ngn1vEYXwijGTa+FXz6GLHueJwF0I7ug34DgUkAFvAs8Hacr2DRYxL5RJ
+        XdNgj4Jd2/g6T9InmWT0hASljur+dJnzNiNCkbn9KbX7J/qK1IbR8y560yRmFsU+
+        NdCFTW7wY0Fb1fWJ+/KTsC4=
+        =J6gs
+        -----END PGP PUBLIC KEY BLOCK----- 
 packages:
- - moby-cli
- - libiothsm-std
- - moby-engine
- runcmd:
- - |
-    set -x
-    (
+  - moby-cli
+  - moby-engine
+runcmd:
+  - |
+      set -x
+      (
         # Wait for docker daemon to start
         while [ $(ps -ef | grep -v grep | grep docker | wc -l) -le 0 ]; do 
-            sleep 3
+          sleep 3
         done
 
-        # Prevent iotedge from starting before the device connection string is set in config.yaml
-        sudo ln -s /dev/null /etc/systemd/system/iotedge.service
-        apt install iotedge
-        sed -i \"s#\\(device_connection_string: \\).*#\\1\\\"', $${device_key}, '\\\"#g\" /etc/iotedge/config.yaml
-        systemctl unmask iotedge
-        systemctl start iotedge
-    ) &
+        apt install aziot-identity-service=1.2.0-1
+        apt install aziot-edge=1.2.0-1
+
+        mkdir /etc/aziot
+        wget https://raw.githubusercontent.com/Azure/iotedge-vm-deploy/1.2.0/config.toml -O /etc/aziot/config.toml
+        sed -i "s#connection_string = #connection_string = \x22$${connection_string}\x22#g" /etc/aziot/config.toml
+        
+        iotedge config apply -c /etc/aziot/config.toml
+
+        apt install -y deviceupdate-agent 
+        apt install -y deliveryoptimization-plugin-apt
+        systemctl restart adu-agent
+      ) &
 TMPL
-
-    vars = {
-        device_key = module.device_twin.connection_string
-    }
 }
-
-# provide variables
-#data "template_file" "cloud_init_script" {
-#    template = "${path.module}/cloudinit.conf.tmpl"
-#    vars = {
-#        device_key = module.device_twin.connection_string
-#    }
-#}
-
-
-# local template file
-#data "local_file" "cloud_init_template" {
-#    filename = "${path.module}/cloudinit.conf"
-#}
-
-
-/*
-               packages:
-                - moby-cli
-                - libiothsm-std
-                - moby-engine
-              runcmd:
-                - |
-                set -x
-                (
-                  # Wait for docker daemon to start
-                  while [ $(ps -ef | grep -v grep | grep docker | wc -l) -le 0 ]; 
-                  do 
-                    sleep 3
-                  done
-                  
-                  # Prevent iotedge from starting before the device connection string is set in config.yaml
-                  
-                  sudo ln -s /dev/null /etc/systemd/system/iotedge.service
-                  apt install iotedge
-                  sed -i \"s#\\(device_connection_string: \\).*#\\1\\\"', variables('dcs'), '\\\"#g\" /etc/iotedge/config.yaml
-                  systemctl unmask iotedge
-                  systemctl start iotedge
-                )
-                */

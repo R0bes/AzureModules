@@ -1,10 +1,20 @@
 
+#################
+#    Locals     #
+#################
+
 # keywords for az cli command
 locals {
     create = "create"
     destroy = "delete"
+    cs_file = "${path.root}/${var.name}_connection_string.tmp"
 }
 
+
+
+#################
+#     Data      #
+#################
 
 # manifest template script, two variants (for each command)
 data "template_file" "command_scripts" {
@@ -39,6 +49,12 @@ data "template_file" "command_scripts" {
         SCRIPT
 }
 
+
+
+#################
+#   Resources   #
+#################
+
 # local executor for the two scripts
 resource "null_resource" "device_twin" {
     triggers = { 
@@ -61,13 +77,13 @@ resource "null_resource" "device_twin" {
 resource "null_resource" "get_connection_string" {
     provisioner "local-exec" {
         interpreter = ["pwsh" , "-Command"]
-        command =" az iot hub device-identity connection-string show -n '${var.iothub_name}' -d '${var.name}' -o tsv | set-content '${var.name}_connection_string.tmp'"
+        command =" az iot hub device-identity connection-string show -n '${var.iothub_name}' -d '${var.name}' -o tsv | set-content '${local.cs_file}'"
     }
     depends_on = [ null_resource.device_twin ]
 }
 
 # connection string file
 data "local_file" "connection_string" {
-    filename = "./${var.name}_connection_string.tmp"
-    depends_on = [ null_resource.get_connection_string ]
+    filename    = local.cs_file
+    depends_on  = [ null_resource.get_connection_string ]
 }
